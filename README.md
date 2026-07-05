@@ -18,7 +18,7 @@ A Discord bot that integrates with the Codeforces API to bring problem recommend
 
 ---
 
-## Hosting on Render (Free)
+## Hosting on Render (Free)(This is totaly to run locally)
 
 > **Free tier workaround:** Render's free plan only supports Web Services. This bot runs a lightweight HTTP health-check server on port 8080 alongside the bot. You then use [UptimeRobot](https://uptimerobot.com) (free) to ping the `/health` endpoint every 5 minutes, keeping it online 24/7.
 
