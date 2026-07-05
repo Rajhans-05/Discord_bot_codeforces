@@ -1,0 +1,26 @@
+# Render deployment configuration
+# Render will read this file to know how to build and start the bot.
+
+services:
+  - type: web          # "web" so Render gives it a public URL (free tier)
+    name: codeforces-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false      # You will set this manually in Render dashboard (never commit real tokens)
+      - key: GUILD_ID
+        sync: false
+      - key: CF_API_KEY
+        sync: false
+      - key: CF_API_SECRET
+        sync: false
+      - key: PROBLEM_CACHE_TTL
+        value: "21600"
+      - key: DUEL_POLL_INTERVAL
+        value: "60"
+      - key: DUEL_ACCEPT_TIMEOUT
+        value: "60"
+      - key: DB_PATH
+        value: "data/bot.db"
