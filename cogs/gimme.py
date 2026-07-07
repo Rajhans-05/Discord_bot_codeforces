@@ -29,6 +29,16 @@ CF_TAGS = [
 CF_RATINGS = [800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700,
               1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500, 2600, 2700, 2800, 3000, 3200, 3500]
 
+# Preset rating options: (display_name, value_string)
+RATING_OPTIONS = [
+    ("⭐ Any rating",       "any"),
+    ("🟢 800 – 1000",      "800-1000"),
+    ("🟢 1000 – 1500",     "1000-1500"),
+    ("🟡 1500 – 2000",     "1500-2000"),
+    ("🟠 2000 – 2500",     "2000-2500"),
+    ("🔴 2500 – 3500",     "2500-3500"),
+]
+
 async def tag_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     # Split on commas to support multi-tag input like "dp, graphs, bitmasks"
     parts = [p.strip().lower() for p in current.split(",")]
@@ -51,13 +61,22 @@ async def tag_autocomplete(interaction: discord.Interaction, current: str) -> li
 
     return choices
 
-async def rating_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
-    try:
-        val = int(current)
-        matches = [r for r in CF_RATINGS if str(r).startswith(str(val))]
-    except ValueError:
-        matches = CF_RATINGS
-    return [app_commands.Choice(name=str(r), value=r) for r in matches[:25]]
+async def rating_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    lower = current.strip().lower()
+    choices: list[app_commands.Choice[str]] = []
+
+    # Show preset ranges that match the typed text
+    for display, value in RATING_OPTIONS:
+        if lower in display.lower() or lower in value:
+            choices.append(app_commands.Choice(name=display, value=value))
+
+    # Also show exact ratings that match
+    for r in CF_RATINGS:
+        if str(r).startswith(lower) or not lower:
+            if len(choices) < 25:
+                choices.append(app_commands.Choice(name=f"Exact: {r}", value=str(r)))
+
+    return choices[:25]
 
 class Gimme(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -69,7 +88,7 @@ class Gimme(commands.Cog):
     )
     @app_commands.describe(
         mode="random: any problem | latest_unsolved: newest unAC'd problem",
-        rating="Problem difficulty rating (e.g. 1600)",
+        rating="Rating filter: 'any', a range like '1000-1500', or exact like '1600'",
         tags="Comma-separated tags (e.g. dp,graphs)",
     )
     @app_commands.choices(mode=[
@@ -81,7 +100,7 @@ class Gimme(commands.Cog):
         self,
         interaction: discord.Interaction,
         mode: app_commands.Choice[str],
-        rating: int,
+        rating: str,
         tags: str = "",
     ):
         await interaction.response.defer()
@@ -97,16 +116,55 @@ class Gimme(commands.Cog):
             )
             return
 
-        if rating not in CF_RATINGS:
-            closest = min(CF_RATINGS, key=lambda r: abs(r - rating))
-            await interaction.followup.send(
-                embed=error_embed(
-                    f"**{rating}** is not a standard CF rating.\n"
-                    f"Closest valid rating: **{closest}**. Try that instead."
-                ),
-                ephemeral=True,
-            )
-            return
+        # Parse the rating filter
+        rating_raw = rating.strip().lower()
+        rating_min: int | None = None
+        rating_max: int | None = None
+        exact_rating: int | None = None
+        rating_label = "any rating"
+
+        if rating_raw == "any":
+            pass  # no rating filter
+        elif "-" in rating_raw:
+            # Range like "1000-1500"
+            try:
+                lo, hi = rating_raw.split("-", 1)
+                rating_min, rating_max = int(lo), int(hi)
+                rating_label = f"{rating_min} – {rating_max}"
+            except ValueError:
+                await interaction.followup.send(
+                    embed=error_embed(
+                        f"**{rating}** is not a valid rating filter.\n"
+                        f"Use **any**, a range like **1000-1500**, or an exact rating like **1600**."
+                    ),
+                    ephemeral=True,
+                )
+                return
+        else:
+            # Exact rating like "1600"
+            try:
+                exact_rating = int(rating_raw)
+                rating_label = str(exact_rating)
+            except ValueError:
+                await interaction.followup.send(
+                    embed=error_embed(
+                        f"**{rating}** is not a valid rating filter.\n"
+                        f"Use **any**, a range like **1000-1500**, or an exact rating like **1600**."
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            if exact_rating not in CF_RATINGS:
+                closest = min(CF_RATINGS, key=lambda r: abs(r - exact_rating))
+                await interaction.followup.send(
+                    embed=error_embed(
+                        f"**{exact_rating}** is not a standard CF rating.\n"
+                        f"Closest valid rating: **{closest}**. Try that instead."
+                    ),
+                    ephemeral=True,
+                )
+                return
 
         tag_list = [t.strip().lower() for t in tags.split(",") if t.strip()] if tags else []
 
@@ -117,7 +175,14 @@ class Gimme(commands.Cog):
             await interaction.followup.send(embed=error_embed(str(e)), ephemeral=True)
             return
 
-        candidates = [p for p in all_problems if p.rating == rating and p.display_id not in solved]
+        # Apply rating filter
+        if exact_rating is not None:
+            candidates = [p for p in all_problems if p.rating == exact_rating and p.display_id not in solved]
+        elif rating_min is not None and rating_max is not None:
+            candidates = [p for p in all_problems if p.rating is not None and rating_min <= p.rating <= rating_max and p.display_id not in solved]
+        else:
+            # "any" — no rating filter
+            candidates = [p for p in all_problems if p.display_id not in solved]
 
         if tag_list:
             tag_set = set(tag_list)
@@ -126,7 +191,7 @@ class Gimme(commands.Cog):
         if not candidates:
             await interaction.followup.send(
                 embed=error_embed(
-                    f"No unsolved problems found at rating **{rating}**"
+                    f"No unsolved problems found at rating **{rating_label}**"
                     + (f" with tags **{', '.join(tag_list)}**" if tag_list else "")
                     + ".\nTry different filters!"
                 ),
