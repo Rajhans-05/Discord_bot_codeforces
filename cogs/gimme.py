@@ -30,9 +30,26 @@ CF_RATINGS = [800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700,
               1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500, 2600, 2700, 2800, 3000, 3200, 3500]
 
 async def tag_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    lower = current.lower()
-    matches = [t for t in CF_TAGS if lower in t][:25]
-    return [app_commands.Choice(name=t, value=t) for t in matches]
+    # Split on commas to support multi-tag input like "dp, graphs, bitmasks"
+    parts = [p.strip().lower() for p in current.split(",")]
+    # Tags already selected (all parts except the one being typed)
+    already_selected = set(parts[:-1])
+    # The fragment the user is currently typing (after the last comma)
+    fragment = parts[-1] if parts else ""
+    # Build the prefix string from already-selected tags
+    prefix = ", ".join(p for p in parts[:-1] if p) + (", " if already_selected - {""} else "")
+
+    # Filter: match the fragment, exclude already-selected tags
+    available = [t for t in CF_TAGS if t not in already_selected and fragment in t]
+
+    choices: list[app_commands.Choice[str]] = []
+    for tag in available[:25]:
+        full_value = f"{prefix}{tag}"
+        # Discord limits Choice name/value to 100 chars
+        if len(full_value) <= 100:
+            choices.append(app_commands.Choice(name=full_value, value=full_value))
+
+    return choices
 
 async def rating_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
     try:
