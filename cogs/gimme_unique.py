@@ -14,7 +14,7 @@ from discord.ext import commands
 import db.queries as q
 from cf_api.client import CFAPIError
 from utils.embed_builder import error_embed, problem_embed
-from cogs.gimme import rating_autocomplete
+from cogs.gimme import rating_autocomplete, CF_RATINGS
 
 log = logging.getLogger(__name__)
 
@@ -27,13 +27,13 @@ class GimmeUnique(commands.Cog):
         description="Get a unique/novel Codeforces problem recommendation (e.g., April Fools).",
     )
     @app_commands.describe(
-        rating="Problem difficulty rating (e.g. 1600)",
+        rating="Rating filter: 'any', a range like '1000-1500', or exact like '1600'",
     )
     @app_commands.autocomplete(rating=rating_autocomplete)
     async def gimme_unique(
         self,
         interaction: discord.Interaction,
-        rating: int,
+        rating: str,
     ):
         await interaction.response.defer()
 
@@ -48,6 +48,56 @@ class GimmeUnique(commands.Cog):
             )
             return
 
+        # Parse the rating filter
+        rating_raw = rating.strip().lower()
+        rating_min: int | None = None
+        rating_max: int | None = None
+        exact_rating: int | None = None
+        rating_label = "any rating"
+
+        if rating_raw == "any":
+            pass  # no rating filter
+        elif "-" in rating_raw:
+            # Range like "1000-1500"
+            try:
+                lo, hi = rating_raw.split("-", 1)
+                rating_min, rating_max = int(lo), int(hi)
+                rating_label = f"{rating_min} – {rating_max}"
+            except ValueError:
+                await interaction.followup.send(
+                    embed=error_embed(
+                        f"**{rating}** is not a valid rating filter.\n"
+                        f"Use **any**, a range like **1000-1500**, or an exact rating like **1600**."
+                    ),
+                    ephemeral=True,
+                )
+                return
+        else:
+            # Exact rating like "1600"
+            try:
+                exact_rating = int(rating_raw)
+                rating_label = str(exact_rating)
+            except ValueError:
+                await interaction.followup.send(
+                    embed=error_embed(
+                        f"**{rating}** is not a valid rating filter.\n"
+                        f"Use **any**, a range like **1000-1500**, or an exact rating like **1600**."
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            if exact_rating not in CF_RATINGS:
+                closest = min(CF_RATINGS, key=lambda r: abs(r - exact_rating))
+                await interaction.followup.send(
+                    embed=error_embed(
+                        f"**{exact_rating}** is not a standard CF rating.\n"
+                        f"Closest valid rating: **{closest}**. Try that instead."
+                    ),
+                    ephemeral=True,
+                )
+                return
+
         try:
             solved = await cf.get_solved_problems(handle)
             all_problems = await cf.get_problemset()
@@ -58,9 +108,17 @@ class GimmeUnique(commands.Cog):
 
         contest_map = {c.contest_id: c.name for c in all_contests}
 
-        candidates = [p for p in all_problems if p.rating == rating and p.display_id not in solved]
-        if not candidates:
-            candidates = [p for p in all_problems if p.rating is not None and abs(p.rating - rating) <= 200 and p.display_id not in solved]
+        # Apply rating filter
+        if exact_rating is not None:
+            candidates = [p for p in all_problems if p.rating == exact_rating and p.display_id not in solved]
+            if not candidates:
+                # Fallback: search +/- 200 rating
+                candidates = [p for p in all_problems if p.rating is not None and abs(p.rating - exact_rating) <= 200 and p.display_id not in solved]
+        elif rating_min is not None and rating_max is not None:
+            candidates = [p for p in all_problems if p.rating is not None and rating_min <= p.rating <= rating_max and p.display_id not in solved]
+        else:
+            # "any" — no rating filter
+            candidates = [p for p in all_problems if p.display_id not in solved]
 
         high_pref_keywords = [
             "global", "good bye", "hello", "codeton", "pinely", "nebius", 

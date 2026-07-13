@@ -203,7 +203,7 @@ class Gimme(commands.Cog):
         if mode_val == "random":
             
             candidates.sort(key=lambda p: (p.contest_id, -ord(p.index[0]) if p.index else 0), reverse=True)
-            problem = random.choice(candidates[:50])
+            problem = random.choice(candidates[:100])
             title = "🎲 Random Recommendation"
         else:
             
