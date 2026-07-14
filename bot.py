@@ -47,6 +47,7 @@ COGS = [
     "cogs.gimme_unique",
     "cogs.list_unsolved",
     "cogs.gitgud",
+    "cogs.gitgud_contest",
     "cogs.duel",
     "cogs.graphs",
     "cogs.contests",

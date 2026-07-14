@@ -67,6 +67,23 @@ async def init_db(db: aiosqlite.Connection) -> None:
             timestamp       INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
             FOREIGN KEY (discord_id) REFERENCES users(discord_id)
         );
+
+        CREATE TABLE IF NOT EXISTS virtual_contest_history (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id          INTEGER NOT NULL,
+            contest_id          INTEGER NOT NULL,
+            contest_name        TEXT    NOT NULL,
+            division            TEXT,
+            total_score         INTEGER NOT NULL DEFAULT 0,
+            estimated_rank      INTEGER,
+            total_participants  INTEGER,
+            total_solved        INTEGER NOT NULL DEFAULT 0,
+            total_problems      INTEGER NOT NULL DEFAULT 0,
+            duration_sec        INTEGER,
+            problem_results     TEXT,       -- JSON array of per-problem results
+            timestamp           INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+            FOREIGN KEY (discord_id) REFERENCES users(discord_id)
+        );
     """)
     await db.commit()
     log.info("Database tables initialised")

@@ -131,3 +131,66 @@ async def record_gitgud(
         (discord_id, problem_url, problem_name, rating, tags, time_limit_min, int(solved)),
     )
     await db.commit()
+
+# ── Virtual Contest ────────────────────────────────────────────────────────
+
+async def record_virtual_contest(
+    db: aiosqlite.Connection,
+    discord_id: int,
+    contest_id: int,
+    contest_name: str,
+    division: str,
+    total_score: int,
+    estimated_rank: int | None,
+    total_participants: int | None,
+    total_solved: int,
+    total_problems: int,
+    duration_sec: int,
+    problem_results: str,  # JSON string
+) -> None:
+    await db.execute(
+        """INSERT INTO virtual_contest_history
+           (discord_id, contest_id, contest_name, division, total_score,
+            estimated_rank, total_participants, total_solved, total_problems,
+            duration_sec, problem_results)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (discord_id, contest_id, contest_name, division, total_score,
+         estimated_rank, total_participants, total_solved, total_problems,
+         duration_sec, problem_results),
+    )
+    await db.commit()
+
+
+async def get_user_virtual_history(
+    db: aiosqlite.Connection, discord_id: int
+) -> list[aiosqlite.Row]:
+    """Get all virtual contest attempts for a user (used by contest picker)."""
+    async with db.execute(
+        """SELECT contest_id, total_solved, total_score, estimated_rank, timestamp
+           FROM virtual_contest_history
+           WHERE discord_id = ?
+           ORDER BY timestamp DESC""",
+        (discord_id,),
+    ) as cur:
+        return await cur.fetchall()
+
+
+async def get_virtual_contest_stats(
+    db: aiosqlite.Connection, discord_id: int
+) -> dict:
+    """Aggregate virtual contest stats for a user."""
+    async with db.execute(
+        """SELECT COUNT(*) as total_contests,
+                  SUM(total_solved) as total_solved,
+                  AVG(total_score) as avg_score
+           FROM virtual_contest_history
+           WHERE discord_id = ?""",
+        (discord_id,),
+    ) as cur:
+        row = await cur.fetchone()
+        return {
+            "total_contests": row["total_contests"],
+            "total_solved": row["total_solved"] or 0,
+            "avg_score": int(row["avg_score"]) if row["avg_score"] else 0,
+        }
+

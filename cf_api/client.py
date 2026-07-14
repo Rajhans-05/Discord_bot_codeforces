@@ -14,7 +14,7 @@ from typing import Optional
 
 import aiohttp
 
-from cf_api.models import CFUser, Contest, Problem, Submission
+from cf_api.models import CFUser, Contest, ContestProblem, Problem, ProblemResult, StandingRow, Submission
 
 log = logging.getLogger(__name__)
 
@@ -177,6 +177,92 @@ class CodeforcesClient:
                 seen.add(pid)
                 result.append(sub)
         return result  # already newest-first
+
+    async def get_contest_problems(self, contest_id: int) -> tuple[Contest, list[ContestProblem]]:
+        """
+        Fetch contest metadata and its problems with max point values.
+        Uses contest.standings with count=1 to minimise data transfer.
+        """
+        result = await self._request("contest.standings", {
+            "contestId": contest_id,
+            "from": 1,
+            "count": 1,
+        })
+        contest = Contest.from_api(result.get("contest", {}))
+        raw_problems = result.get("problems", [])
+
+        # Extract max points from the first standing row (if available)
+        rows = result.get("rows", [])
+        problems: list[ContestProblem] = []
+        for i, p in enumerate(raw_problems):
+            max_pts = 0
+            if rows and i < len(rows[0].get("problemResults", [])):
+                # Use the problem's points field from the contest metadata
+                max_pts = int(p.get("points", 0))
+            if max_pts == 0:
+                # Fallback: typical CF scoring 500, 1000, 1500, ...
+                max_pts = (i + 1) * 500
+            problems.append(ContestProblem.from_api(p, max_pts))
+
+        return contest, problems
+
+    async def get_contest_standings(
+        self, contest_id: int, count: int = 10000
+    ) -> list[StandingRow]:
+        """
+        Fetch official participant standings for rank estimation.
+        Only includes official participants (showUnofficial=false).
+        """
+        result = await self._request("contest.standings", {
+            "contestId": contest_id,
+            "from": 1,
+            "count": count,
+            "showUnofficial": "false",
+        })
+        return [StandingRow.from_api(row) for row in result.get("rows", [])]
+
+    async def get_finished_div_contests(self, division: int) -> list[Contest]:
+        """
+        Return finished contests matching a specific division (1–4).
+        Sorted newest-first.
+        """
+        contests = await self.get_contests()
+        div_str = f"Div. {division}"
+        finished = [
+            c for c in contests
+            if c.phase == "FINISHED" and div_str in c.name
+        ]
+        finished.sort(key=lambda c: c.start_time_seconds, reverse=True)
+        return finished
+
+    async def get_user_problem_submissions(
+        self, handle: str, contest_id: int, problem_index: str, after_ts: int = 0
+    ) -> list[Submission]:
+        """
+        Fetch a user's submissions for a specific problem,
+        filtered to only include submissions after `after_ts` (unix timestamp).
+        """
+        subs = await self.get_user_submissions(handle)
+        return [
+            s for s in subs
+            if s.problem.contest_id == contest_id
+            and s.problem.index == problem_index
+            and s.time_seconds >= after_ts
+        ]
+
+    async def get_user_submissions_for_contest(
+        self, handle: str, contest_id: int, after_ts: int = 0
+    ) -> list[Submission]:
+        """
+        Fetch ALL of a user's submissions for problems belonging to a given contest,
+        filtered to submissions after `after_ts`.
+        """
+        subs = await self.get_user_submissions(handle)
+        return [
+            s for s in subs
+            if s.problem.contest_id == contest_id
+            and s.time_seconds >= after_ts
+        ]
 
 class CFAPIError(Exception):
     pass

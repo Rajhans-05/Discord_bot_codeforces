@@ -96,3 +96,70 @@ class Contest:
             start_time_seconds=data.get("startTimeSeconds", 0),
             duration_seconds=data.get("durationSeconds", 0),
         )
+
+@dataclass
+class ContestProblem:
+    """A problem within a specific contest, including its max score."""
+    contest_id: int
+    index: str              # e.g. "A", "B", "C1"
+    name: str
+    max_points: int = 0     # initial max score for this problem (e.g. 500, 1000)
+    rating: Optional[int] = None
+    tags: list[str] = field(default_factory=list)
+
+    @property
+    def url(self) -> str:
+        return f"https://codeforces.com/contest/{self.contest_id}/problem/{self.index}"
+
+    @property
+    def display_id(self) -> str:
+        return f"{self.contest_id}{self.index}"
+
+    @classmethod
+    def from_api(cls, problem_data: dict, points: int = 0) -> "ContestProblem":
+        return cls(
+            contest_id=problem_data.get("contestId", 0),
+            index=problem_data.get("index", ""),
+            name=problem_data.get("name", ""),
+            max_points=int(points) if points else 0,
+            rating=problem_data.get("rating"),
+            tags=problem_data.get("tags", []),
+        )
+
+@dataclass
+class ProblemResult:
+    """Per-problem result from a single standing row."""
+    points: float = 0.0
+    rejected_attempt_count: int = 0
+    best_submission_time_seconds: Optional[int] = None  # seconds from contest start
+
+    @classmethod
+    def from_api(cls, data: dict) -> "ProblemResult":
+        return cls(
+            points=data.get("points", 0.0),
+            rejected_attempt_count=data.get("rejectedAttemptCount", 0),
+            best_submission_time_seconds=data.get("bestSubmissionTimeSeconds"),
+        )
+
+@dataclass
+class StandingRow:
+    """One participant row from contest.standings."""
+    rank: int
+    handle: str
+    total_points: float
+    penalty: int
+    problem_results: list[ProblemResult] = field(default_factory=list)
+
+    @classmethod
+    def from_api(cls, data: dict) -> "StandingRow":
+        members = data.get("party", {}).get("members", [])
+        handle = members[0].get("handle", "") if members else ""
+        return cls(
+            rank=data.get("rank", 0),
+            handle=handle,
+            total_points=data.get("points", 0.0),
+            penalty=data.get("penalty", 0),
+            problem_results=[
+                ProblemResult.from_api(pr) for pr in data.get("problemResults", [])
+            ],
+        )
