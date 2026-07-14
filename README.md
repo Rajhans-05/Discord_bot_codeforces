@@ -12,6 +12,7 @@ A Discord bot that integrates with the Codeforces API to bring problem recommend
 | `/gimme_unique` | Get a problem from a unique contest (Global Rounds, company rounds, April Fools) |
 | `/listunsolved` | See problems you've attempted but never solved |
 | `/gitgud` | Get a challenge problem slightly above your current rating |
+| `/gitgud_contest` | Start a full virtual contest simulation with real scoring and rank estimation |
 | `/duel` | Challenge another user to a timed coding duel |
 | `/graph rating` | View your rating history as a graph |
 | `/contests` | See upcoming Codeforces contests |
