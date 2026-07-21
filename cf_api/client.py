@@ -45,6 +45,10 @@ class CodeforcesClient:
         self._problem_cache: list[Problem] = []
         self._problem_cache_time: float = 0.0
 
+        # Contest list cache
+        self._contest_cache: list[Contest] = []
+        self._contest_cache_time: float = 0.0
+
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
     async def start(self):
@@ -143,8 +147,20 @@ class CodeforcesClient:
 
     async def get_contests(self, gym: bool = False) -> list[Contest]:
         """Return all contests (future + past). Filter phase == 'BEFORE' for upcoming."""
-        result = await self._request("contest.list", {"gym": str(gym).lower()})
-        return [Contest.from_api(c) for c in result]
+        if gym:
+            result = await self._request("contest.list", {"gym": "true"})
+            return [Contest.from_api(c) for c in result]
+
+        now = time.monotonic()
+        if self._contest_cache and (now - self._contest_cache_time) < self._cache_ttl:
+            return self._contest_cache
+
+        result = await self._request("contest.list", {"gym": "false"})
+        contests = [Contest.from_api(c) for c in result]
+        self._contest_cache = contests
+        self._contest_cache_time = now
+        log.info("CF contest cache refreshed: %d contests", len(contests))
+        return contests
 
     async def get_upcoming_contests(self) -> list[Contest]:
         """Return only contests that haven't started yet, sorted soonest-first."""
