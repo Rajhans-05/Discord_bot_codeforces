@@ -568,13 +568,24 @@ class GitgudContest(commands.Cog):
         duration_m = (contest.duration_seconds % 3600) // 60
         thread_name = f"🏆 Virtual — {contest.name[:60]}"
 
+        # Discord only allows: 60, 1440 (1d), 4320 (3d), 10080 (7d)
+        contest_minutes = contest.duration_seconds // 60
+        if contest_minutes <= 60:
+            archive_dur = 60
+        elif contest_minutes <= 1440:
+            archive_dur = 1440
+        elif contest_minutes <= 4320:
+            archive_dur = 4320
+        else:
+            archive_dur = 10080
+
         try:
             thread = await channel.create_thread(
                 name=thread_name,
-                auto_archive_duration=max(60, (contest.duration_seconds // 60) + 30),
+                auto_archive_duration=archive_dur,
                 reason="gitgud virtual contest",
             )
-        except (discord.Forbidden, AttributeError):
+        except (discord.Forbidden, discord.HTTPException, AttributeError):
             thread = None
 
         # Create session
