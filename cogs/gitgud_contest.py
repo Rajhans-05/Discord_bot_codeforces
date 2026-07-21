@@ -460,7 +460,8 @@ class GitgudContest(commands.Cog):
         description="Start a virtual Codeforces contest simulation.",
     )
     @app_commands.describe(
-        division="Contest division (1–4)",
+        division="Contest division (1–4). Optional if providing a specific contest.",
+        contest_id="Specific Codeforces contest ID (e.g., 1923) or URL.",
     )
     @app_commands.choices(division=[
         app_commands.Choice(name="Division 1", value=1),
@@ -471,12 +472,12 @@ class GitgudContest(commands.Cog):
     async def gitgud_contest(
         self,
         interaction: discord.Interaction,
-        division: app_commands.Choice[int],
+        division: app_commands.Choice[int] | None = None,
+        contest_id: str | None = None,
     ):
         await interaction.response.defer()
 
         user = interaction.user
-        div = division.value
         db = self.bot.db
         cf = self.bot.cf
 
@@ -503,36 +504,63 @@ class GitgudContest(commands.Cog):
             )
             return
 
+        if not division and not contest_id:
+            await interaction.followup.send(
+                embed=error_embed("You must provide either a `division` or a specific `contest_id`!"),
+                ephemeral=True,
+            )
+            return
+
         # Pick a contest
-        try:
-            contest = await pick_contest(cf, db, user.id, div)
-        except CFAPIError as e:
-            await interaction.followup.send(embed=error_embed(str(e)), ephemeral=True)
-            return
+        if contest_id:
+            import re
+            match = re.search(r'\d+', contest_id)
+            if not match:
+                await interaction.followup.send(embed=error_embed("Invalid contest ID or URL."), ephemeral=True)
+                return
+            c_id = int(match.group())
+            try:
+                contest_data, problems = await cf.get_contest_problems(c_id)
+            except CFAPIError as e:
+                await interaction.followup.send(embed=error_embed(str(e)), ephemeral=True)
+                return
+            if not problems:
+                await interaction.followup.send(
+                    embed=error_embed("Could not load problems for this contest. Try again."),
+                    ephemeral=True,
+                )
+                return
+            contest = contest_data
+            div = "Custom"
+        else:
+            div = division.value
+            try:
+                contest = await pick_contest(cf, db, user.id, div)
+            except CFAPIError as e:
+                await interaction.followup.send(embed=error_embed(str(e)), ephemeral=True)
+                return
 
-        if not contest:
-            await interaction.followup.send(
-                embed=error_embed(f"No finished Div. {div} contests found."),
-                ephemeral=True,
-            )
-            return
+            if not contest:
+                await interaction.followup.send(
+                    embed=error_embed(f"No finished Div. {div} contests found."),
+                    ephemeral=True,
+                )
+                return
 
-        # Fetch contest problems
-        try:
-            contest_data, problems = await cf.get_contest_problems(contest.contest_id)
-        except CFAPIError as e:
-            await interaction.followup.send(embed=error_embed(str(e)), ephemeral=True)
-            return
+            # Fetch contest problems
+            try:
+                contest_data, problems = await cf.get_contest_problems(contest.contest_id)
+            except CFAPIError as e:
+                await interaction.followup.send(embed=error_embed(str(e)), ephemeral=True)
+                return
 
-        if not problems:
-            await interaction.followup.send(
-                embed=error_embed("Could not load problems for this contest. Try again."),
-                ephemeral=True,
-            )
-            return
-
-        # Use the fuller contest data from standings
-        contest = contest_data
+            if not problems:
+                await interaction.followup.send(
+                    embed=error_embed("Could not load problems for this contest. Try again."),
+                    ephemeral=True,
+                )
+                return
+            contest = contest_data
 
         # Create a thread
         channel = interaction.channel
