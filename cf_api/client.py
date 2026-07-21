@@ -82,7 +82,12 @@ class CodeforcesClient:
         for attempt in range(3):
             try:
                 async with self._session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                    data = await resp.json(content_type=None)
+                    try:
+                        data = await resp.json(content_type=None)
+                    except Exception:
+                        text = await resp.text()
+                        raise CFAPIError(f"CF API returned invalid JSON (HTTP {resp.status}).")
+                        
                     if data.get("status") == "OK":
                         return data["result"]
                     comment = data.get("comment", "Unknown error")
@@ -91,10 +96,12 @@ class CodeforcesClient:
                         await asyncio.sleep(2 ** attempt)
                         continue
                     raise CFAPIError(comment)
-            except aiohttp.ClientError as exc:
+            except CFAPIError:
+                raise
+            except Exception as exc:
                 log.error("HTTP error on attempt %d: %s", attempt + 1, exc)
                 if attempt == 2:
-                    raise
+                    raise CFAPIError(f"Network error: {exc}")
                 await asyncio.sleep(1.5 ** attempt)
 
         raise CFAPIError("Max retries exceeded")
