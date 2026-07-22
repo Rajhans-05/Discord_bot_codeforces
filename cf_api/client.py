@@ -60,13 +60,13 @@ class CodeforcesClient:
 
     # ── Rate-limited request ──────────────────────────────────────────────
 
-    async def _request(self, method: str, params: dict | None = None) -> dict:
+    async def _request(self, method: str, params: dict | None = None, *, signed: bool = True) -> dict:
         """Make a rate-limited GET request to the CF API."""
         if params is None:
             params = {}
 
-        # Inject auth if keys provided
-        if self._api_key and self._api_secret:
+        # Inject auth if keys provided and signing is requested
+        if signed and self._api_key and self._api_secret:
             params = self._sign(method, params)
 
         async with self._lock:
@@ -111,11 +111,13 @@ class CodeforcesClient:
         rand = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
         params["apiKey"] = self._api_key
         params["time"] = int(time.time())
-        sorted_params = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+        # CF API requires all values as strings for consistent signature hashing
+        str_params = {k: str(v) for k, v in params.items()}
+        sorted_params = "&".join(f"{k}={v}" for k, v in sorted(str_params.items()))
         to_hash = f"{rand}/{method}?{sorted_params}#{self._api_secret}"
         sig = hashlib.sha512(to_hash.encode()).hexdigest()
-        params["apiSig"] = f"{rand}{sig}"
-        return params
+        str_params["apiSig"] = f"{rand}{sig}"
+        return str_params
 
     # ── Public API methods ────────────────────────────────────────────────
 
@@ -205,12 +207,27 @@ class CodeforcesClient:
         """
         Fetch contest metadata and its problems with max point values.
         Uses contest.standings with count=1 to minimise data transfer.
+        Regular contests require anonymous (unsigned) requests;
+        gym contests (id >= 100000) require authenticated (signed) requests.
         """
-        result = await self._request("contest.standings", {
-            "contestId": contest_id,
-            "from": 1,
-            "count": 1,
-        })
+        is_gym = contest_id >= 100000
+        try:
+            result = await self._request("contest.standings", {
+                "contestId": contest_id,
+                "from": 1,
+                "count": 1,
+            }, signed=is_gym)
+        except CFAPIError:
+            if not is_gym:
+                # Retry with auth in case it's actually a gym-range contest
+                result = await self._request("contest.standings", {
+                    "contestId": contest_id,
+                    "from": 1,
+                    "count": 1,
+                }, signed=True)
+            else:
+                raise
+
         contest = Contest.from_api(result.get("contest", {}))
         raw_problems = result.get("problems", [])
 
@@ -235,13 +252,26 @@ class CodeforcesClient:
         """
         Fetch official participant standings for rank estimation.
         Only includes official participants (showUnofficial=false).
+        Regular contests must use anonymous requests; gym contests need auth.
         """
-        result = await self._request("contest.standings", {
-            "contestId": contest_id,
-            "from": 1,
-            "count": count,
-            "showUnofficial": "false",
-        })
+        is_gym = contest_id >= 100000
+        try:
+            result = await self._request("contest.standings", {
+                "contestId": contest_id,
+                "from": 1,
+                "count": count,
+                "showUnofficial": "false",
+            }, signed=is_gym)
+        except CFAPIError:
+            if not is_gym:
+                result = await self._request("contest.standings", {
+                    "contestId": contest_id,
+                    "from": 1,
+                    "count": count,
+                    "showUnofficial": "false",
+                }, signed=True)
+            else:
+                raise
         return [StandingRow.from_api(row) for row in result.get("rows", [])]
 
     async def get_finished_div_contests(self, division: int) -> list[Contest]:
