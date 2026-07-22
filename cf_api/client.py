@@ -206,27 +206,21 @@ class CodeforcesClient:
     async def get_contest_problems(self, contest_id: int) -> tuple[Contest, list[ContestProblem]]:
         """
         Fetch contest metadata and its problems with max point values.
-        Uses contest.standings with count=1 to minimise data transfer.
-        Regular contests require anonymous (unsigned) requests;
-        gym contests (id >= 100000) require authenticated (signed) requests.
+        Regular contests: anonymous request with ONLY contestId (CF forbids extra params).
+        Gym contests (id >= 100000): authenticated request with from/count.
         """
         is_gym = contest_id >= 100000
-        try:
+        if is_gym:
             result = await self._request("contest.standings", {
                 "contestId": contest_id,
                 "from": 1,
                 "count": 1,
-            }, signed=is_gym)
-        except CFAPIError:
-            if not is_gym:
-                # Retry with auth in case it's actually a gym-range contest
-                result = await self._request("contest.standings", {
-                    "contestId": contest_id,
-                    "from": 1,
-                    "count": 1,
-                }, signed=True)
-            else:
-                raise
+            }, signed=True)
+        else:
+            # CF API forbids extra params for regular contests when API keys exist
+            result = await self._request("contest.standings", {
+                "contestId": contest_id,
+            }, signed=False)
 
         contest = Contest.from_api(result.get("contest", {}))
         raw_problems = result.get("problems", [])
@@ -251,27 +245,22 @@ class CodeforcesClient:
     ) -> list[StandingRow]:
         """
         Fetch official participant standings for rank estimation.
-        Only includes official participants (showUnofficial=false).
-        Regular contests must use anonymous requests; gym contests need auth.
+        Regular contests: anonymous with ONLY contestId.
+        Gym contests: authenticated with full params.
         """
         is_gym = contest_id >= 100000
-        try:
+        if is_gym:
             result = await self._request("contest.standings", {
                 "contestId": contest_id,
                 "from": 1,
                 "count": count,
                 "showUnofficial": "false",
-            }, signed=is_gym)
-        except CFAPIError:
-            if not is_gym:
-                result = await self._request("contest.standings", {
-                    "contestId": contest_id,
-                    "from": 1,
-                    "count": count,
-                    "showUnofficial": "false",
-                }, signed=True)
-            else:
-                raise
+            }, signed=True)
+        else:
+            # CF API: regular contests only allow contestId, no extra params
+            result = await self._request("contest.standings", {
+                "contestId": contest_id,
+            }, signed=False)
         return [StandingRow.from_api(row) for row in result.get("rows", [])]
 
     async def get_finished_div_contests(self, division: int) -> list[Contest]:
