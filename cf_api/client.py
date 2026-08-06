@@ -79,30 +79,44 @@ class CodeforcesClient:
         url = f"{CF_BASE}/{method}"
         assert self._session is not None, "Call client.start() first"
 
-        for attempt in range(3):
+        MAX_ATTEMPTS = 4
+        for attempt in range(MAX_ATTEMPTS):
             try:
-                async with self._session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                async with self._session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                    if resp.status >= 500:
+                        log.warning("CF API HTTP %d on %s (attempt %d/%d)", resp.status, method, attempt + 1, MAX_ATTEMPTS)
+                        if attempt < MAX_ATTEMPTS - 1:
+                            await asyncio.sleep(1.5 ** attempt + 1)
+                            continue
+                        raise CFAPIError(f"CF API is temporarily unavailable (HTTP {resp.status}). Please try again in a moment.")
+
                     try:
                         data = await resp.json(content_type=None)
                     except Exception:
-                        text = await resp.text()
-                        raise CFAPIError(f"CF API returned invalid JSON (HTTP {resp.status}).")
-                        
+                        log.warning("CF API returned invalid JSON on %s (HTTP %d, attempt %d/%d)", method, resp.status, attempt + 1, MAX_ATTEMPTS)
+                        if attempt < MAX_ATTEMPTS - 1:
+                            await asyncio.sleep(1.5 ** attempt + 1)
+                            continue
+                        raise CFAPIError(f"CF API returned invalid JSON (HTTP {resp.status}). Please try again.")
+
                     if data.get("status") == "OK":
                         return data["result"]
+
                     comment = data.get("comment", "Unknown error")
                     log.warning("CF API error on %s: %s", method, comment)
-                    if "limit" in comment.lower():
-                        await asyncio.sleep(2 ** attempt)
-                        continue
+                    if "limit" in comment.lower() or "too many" in comment.lower():
+                        if attempt < MAX_ATTEMPTS - 1:
+                            await asyncio.sleep(2 ** attempt + 1)
+                            continue
+
                     raise CFAPIError(comment)
             except CFAPIError:
                 raise
             except Exception as exc:
-                log.error("HTTP error on attempt %d: %s", attempt + 1, exc)
-                if attempt == 2:
+                log.error("HTTP network error on attempt %d: %s", attempt + 1, exc)
+                if attempt == MAX_ATTEMPTS - 1:
                     raise CFAPIError(f"Network error: {exc}")
-                await asyncio.sleep(1.5 ** attempt)
+                await asyncio.sleep(1.5 ** attempt + 1)
 
         raise CFAPIError("Max retries exceeded")
 
@@ -126,9 +140,16 @@ class CodeforcesClient:
         result = await self._request("user.info", {"handles": ";".join(handles)})
         return [CFUser.from_api(u) for u in result]
 
-    async def get_user_submissions(self, handle: str, count: int = 10000) -> list[Submission]:
+    async def get_user_submissions(self, handle: str, count: int = 5000) -> list[Submission]:
         """Fetch latest `count` submissions for a user, newest first."""
-        result = await self._request("user.status", {"handle": handle, "from": 1, "count": count})
+        try:
+            result = await self._request("user.status", {"handle": handle, "from": 1, "count": count})
+        except CFAPIError as exc:
+            if count > 2000:
+                log.warning("get_user_submissions failed for %s with count=%d (%s), retrying with count=2000", handle, count, exc)
+                result = await self._request("user.status", {"handle": handle, "from": 1, "count": 2000})
+            else:
+                raise exc
         return [Submission.from_api(s) for s in result]
 
     async def get_problemset(self, tags: list[str] | None = None) -> list[Problem]:
