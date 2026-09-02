@@ -184,9 +184,24 @@ async def main():
         log.critical("BOT_TOKEN is not set. Copy .env.example -> .env and fill in your token.")
         sys.exit(1)
 
-    bot = CFBot()
-    async with bot:
-        await bot.start(config.BOT_TOKEN)
+    while True:
+        try:
+            bot = CFBot()
+            async with bot:
+                await bot.start(config.BOT_TOKEN)
+        except discord.errors.HTTPException as exc:
+            if exc.status == 429:
+                log.warning("Discord API is temporarily rate-limiting (429). Retrying connection in 30 seconds...")
+                await asyncio.sleep(30)
+            else:
+                log.error("Discord HTTP error: %s. Retrying in 15 seconds...", exc)
+                await asyncio.sleep(15)
+        except (discord.errors.GatewayNotFound, discord.errors.ConnectionClosed) as exc:
+            log.warning("Discord connection dropped (%s). Reconnecting in 10 seconds...", exc)
+            await asyncio.sleep(10)
+        except Exception as exc:
+            log.error("Unexpected error in bot lifecycle: %s. Restarting in 10 seconds...", exc, exc_info=True)
+            await asyncio.sleep(10)
 
 
 if __name__ == "__main__":
