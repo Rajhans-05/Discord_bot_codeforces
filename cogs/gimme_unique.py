@@ -14,7 +14,7 @@ from discord.ext import commands
 import db.queries as q
 from cf_api.client import CFAPIError
 from utils.embed_builder import error_embed, problem_embed
-from cogs.gimme import RATING_CHOICES, CF_RATINGS
+from cogs.gimme import rating_autocomplete, CF_RATINGS
 
 log = logging.getLogger(__name__)
 
@@ -27,9 +27,9 @@ class GimmeUnique(commands.Cog):
         description="Get a unique/novel Codeforces problem recommendation (e.g., April Fools).",
     )
     @app_commands.describe(
-        rating="Rating filter (pick a range or type an exact rating like 1600)",
+        rating="Rating filter: 'any', exact (800-3500), or a range like '1000-1500'",
     )
-    @app_commands.choices(rating=RATING_CHOICES)
+    @app_commands.autocomplete(rating=rating_autocomplete)
     async def gimme_unique(
         self,
         interaction: discord.Interaction,

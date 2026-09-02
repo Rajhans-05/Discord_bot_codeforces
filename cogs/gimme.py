@@ -64,50 +64,31 @@ async def tag_autocomplete(interaction: discord.Interaction, current: str) -> li
     except Exception:
         return []
 
-# Static rating choices — no autocomplete needed, zero API calls per keystroke
-# Discord allows max 25 choices: 1 any + 9 ranges + 15 exact ratings
-RATING_CHOICES = [
-    app_commands.Choice(name="⭐ Any rating", value="any"),
-    # ── Ranges ──
-    app_commands.Choice(name="🟢 800 – 1000 (range)", value="800-1000"),
-    app_commands.Choice(name="🟢 1000 – 1200 (range)", value="1000-1200"),
-    app_commands.Choice(name="🟢 1200 – 1400 (range)", value="1200-1400"),
-    app_commands.Choice(name="🟡 1400 – 1600 (range)", value="1400-1600"),
-    app_commands.Choice(name="🟡 1600 – 1800 (range)", value="1600-1800"),
-    app_commands.Choice(name="🟠 1800 – 2000 (range)", value="1800-2000"),
-    app_commands.Choice(name="🟠 2000 – 2200 (range)", value="2000-2200"),
-    app_commands.Choice(name="🔴 2200 – 2500 (range)", value="2200-2500"),
-    app_commands.Choice(name="🔴 2500 – 3500 (range)", value="2500-3500"),
-    # ── Exact ratings ──
-    app_commands.Choice(name="Exact: 800", value="800"),
-    app_commands.Choice(name="Exact: 1000", value="1000"),
-    app_commands.Choice(name="Exact: 1200", value="1200"),
-    app_commands.Choice(name="Exact: 1400", value="1400"),
-    app_commands.Choice(name="Exact: 1500", value="1500"),
-    app_commands.Choice(name="Exact: 1600", value="1600"),
-    app_commands.Choice(name="Exact: 1700", value="1700"),
-    app_commands.Choice(name="Exact: 1800", value="1800"),
-    app_commands.Choice(name="Exact: 1900", value="1900"),
-    app_commands.Choice(name="Exact: 2000", value="2000"),
-    app_commands.Choice(name="Exact: 2100", value="2100"),
-    app_commands.Choice(name="Exact: 2200", value="2200"),
-    app_commands.Choice(name="Exact: 2400", value="2400"),
-    app_commands.Choice(name="Exact: 2600", value="2600"),
-    app_commands.Choice(name="Exact: 2800", value="2800"),
-]
-
 async def rating_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    """Kept for backward compatibility with other cogs that import it."""
+    """Autocomplete for problem rating — shows all CF ratings (800-3500), ranges, and any."""
     try:
         lower = current.strip().lower()
         choices: list[app_commands.Choice[str]] = []
+
+        if not lower:
+            # Default when opening dropdown: Any rating + ALL 24 CF ratings (800 to 3500)
+            choices.append(app_commands.Choice(name="⭐ Any rating", value="any"))
+            for r in CF_RATINGS:
+                choices.append(app_commands.Choice(name=f"Exact: {r}", value=str(r)))
+            return choices[:25]
+
+        # If user is typing:
+        # 1. Match exact ratings starting with or containing what's typed (e.g. 9 -> 900, 11 -> 1100)
+        for r in CF_RATINGS:
+            r_str = str(r)
+            if r_str.startswith(lower) or lower in r_str:
+                choices.append(app_commands.Choice(name=f"Exact: {r}", value=r_str))
+
+        # 2. Match preset ranges or "any"
         for display, value in RATING_OPTIONS:
             if lower in display.lower() or lower in value:
                 choices.append(app_commands.Choice(name=display, value=value))
-        for r in CF_RATINGS:
-            if str(r).startswith(lower) or not lower:
-                if len(choices) < 25:
-                    choices.append(app_commands.Choice(name=f"Exact: {r}", value=str(r)))
+
         return choices[:25]
     except Exception:
         return []
@@ -122,14 +103,14 @@ class Gimme(commands.Cog):
     )
     @app_commands.describe(
         mode="random: any problem | latest_unsolved: newest unAC'd problem",
-        rating="Rating filter (pick a range or type an exact rating like 1600)",
+        rating="Rating filter: 'any', exact (800-3500), or a range like '1000-1500'",
         tags="Comma-separated tags (e.g. dp,graphs)",
     )
     @app_commands.choices(mode=[
         app_commands.Choice(name="🎲 Random unsolved", value="random"),
         app_commands.Choice(name="🕐 Latest unsolved (newest first)", value="latest_unsolved"),
-    ], rating=RATING_CHOICES)
-    @app_commands.autocomplete(tags=tag_autocomplete)
+    ])
+    @app_commands.autocomplete(tags=tag_autocomplete, rating=rating_autocomplete)
     async def gimme(
         self,
         interaction: discord.Interaction,
