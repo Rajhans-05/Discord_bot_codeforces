@@ -65,17 +65,35 @@ async def tag_autocomplete(interaction: discord.Interaction, current: str) -> li
         return []
 
 # Static rating choices — no autocomplete needed, zero API calls per keystroke
+# Discord allows max 25 choices: 1 any + 9 ranges + 15 exact ratings
 RATING_CHOICES = [
     app_commands.Choice(name="⭐ Any rating", value="any"),
-    app_commands.Choice(name="🟢 800 – 1000", value="800-1000"),
-    app_commands.Choice(name="🟢 1000 – 1200", value="1000-1200"),
-    app_commands.Choice(name="🟢 1200 – 1400", value="1200-1400"),
-    app_commands.Choice(name="🟡 1400 – 1600", value="1400-1600"),
-    app_commands.Choice(name="🟡 1600 – 1800", value="1600-1800"),
-    app_commands.Choice(name="🟠 1800 – 2000", value="1800-2000"),
-    app_commands.Choice(name="🟠 2000 – 2200", value="2000-2200"),
-    app_commands.Choice(name="🔴 2200 – 2500", value="2200-2500"),
-    app_commands.Choice(name="🔴 2500 – 3500", value="2500-3500"),
+    # ── Ranges ──
+    app_commands.Choice(name="🟢 800 – 1000 (range)", value="800-1000"),
+    app_commands.Choice(name="🟢 1000 – 1200 (range)", value="1000-1200"),
+    app_commands.Choice(name="🟢 1200 – 1400 (range)", value="1200-1400"),
+    app_commands.Choice(name="🟡 1400 – 1600 (range)", value="1400-1600"),
+    app_commands.Choice(name="🟡 1600 – 1800 (range)", value="1600-1800"),
+    app_commands.Choice(name="🟠 1800 – 2000 (range)", value="1800-2000"),
+    app_commands.Choice(name="🟠 2000 – 2200 (range)", value="2000-2200"),
+    app_commands.Choice(name="🔴 2200 – 2500 (range)", value="2200-2500"),
+    app_commands.Choice(name="🔴 2500 – 3500 (range)", value="2500-3500"),
+    # ── Exact ratings ──
+    app_commands.Choice(name="Exact: 800", value="800"),
+    app_commands.Choice(name="Exact: 1000", value="1000"),
+    app_commands.Choice(name="Exact: 1200", value="1200"),
+    app_commands.Choice(name="Exact: 1400", value="1400"),
+    app_commands.Choice(name="Exact: 1500", value="1500"),
+    app_commands.Choice(name="Exact: 1600", value="1600"),
+    app_commands.Choice(name="Exact: 1700", value="1700"),
+    app_commands.Choice(name="Exact: 1800", value="1800"),
+    app_commands.Choice(name="Exact: 1900", value="1900"),
+    app_commands.Choice(name="Exact: 2000", value="2000"),
+    app_commands.Choice(name="Exact: 2100", value="2100"),
+    app_commands.Choice(name="Exact: 2200", value="2200"),
+    app_commands.Choice(name="Exact: 2400", value="2400"),
+    app_commands.Choice(name="Exact: 2600", value="2600"),
+    app_commands.Choice(name="Exact: 2800", value="2800"),
 ]
 
 async def rating_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
