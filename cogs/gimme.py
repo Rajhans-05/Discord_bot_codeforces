@@ -65,29 +65,32 @@ async def tag_autocomplete(interaction: discord.Interaction, current: str) -> li
         return []
 
 async def rating_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    """Autocomplete for problem rating — shows all CF ratings (800-3500), ranges, and any."""
+    """Autocomplete for problem rating — shows both preset ranges and all CF ratings."""
     try:
         lower = current.strip().lower()
         choices: list[app_commands.Choice[str]] = []
 
         if not lower:
-            # Default when opening dropdown: Any rating + ALL 24 CF ratings (800 to 3500)
-            choices.append(app_commands.Choice(name="⭐ Any rating", value="any"))
+            # When opening dropdown: show preset ranges first, then exact ratings up to 25
+            for display, value in RATING_OPTIONS:
+                choices.append(app_commands.Choice(name=display, value=value))
             for r in CF_RATINGS:
-                choices.append(app_commands.Choice(name=f"Exact: {r}", value=str(r)))
-            return choices[:25]
+                if len(choices) < 25:
+                    choices.append(app_commands.Choice(name=f"Exact: {r}", value=str(r)))
+            return choices
 
-        # If user is typing:
-        # 1. Match exact ratings starting with or containing what's typed (e.g. 9 -> 900, 11 -> 1100)
-        for r in CF_RATINGS:
-            r_str = str(r)
-            if r_str.startswith(lower) or lower in r_str:
-                choices.append(app_commands.Choice(name=f"Exact: {r}", value=r_str))
-
-        # 2. Match preset ranges or "any"
+        # When typing:
+        # 1. Match preset ranges
         for display, value in RATING_OPTIONS:
             if lower in display.lower() or lower in value:
                 choices.append(app_commands.Choice(name=display, value=value))
+
+        # 2. Match exact ratings starting with or containing what's typed (e.g. 9 -> 900, 11 -> 1100, 35 -> 3500)
+        for r in CF_RATINGS:
+            r_str = str(r)
+            if r_str.startswith(lower) or lower in r_str:
+                if len(choices) < 25:
+                    choices.append(app_commands.Choice(name=f"Exact: {r}", value=r_str))
 
         return choices[:25]
     except Exception:
