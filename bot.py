@@ -97,6 +97,7 @@ class CFBot(commands.Bot):
             api_secret=config.CF_API_SECRET,
             cache_ttl=config.PROBLEM_CACHE_TTL,
         )
+        self.tree.on_error = self.on_app_command_error
         self.db = None  # assigned in setup_hook
 
     async def setup_hook(self) -> None:
@@ -117,14 +118,17 @@ class CFBot(commands.Bot):
                 log.error("Failed to load cog %s: %s", cog, exc, exc_info=True)
 
         # Guild-scoped sync is instant; global sync takes up to 1 hour.
-        if config.GUILD_ID:
-            guild = discord.Object(id=config.GUILD_ID)
-            self.tree.copy_global_to(guild=guild)
-            synced = await self.tree.sync(guild=guild)
-            log.info("Synced %d slash commands to guild %d", len(synced), config.GUILD_ID)
-        else:
-            synced = await self.tree.sync()
-            log.info("Synced %d slash commands globally (may take up to 1 hour)", len(synced))
+        try:
+            if config.GUILD_ID:
+                guild = discord.Object(id=config.GUILD_ID)
+                self.tree.copy_global_to(guild=guild)
+                synced = await self.tree.sync(guild=guild)
+                log.info("Synced %d slash commands to guild %d", len(synced), config.GUILD_ID)
+            else:
+                synced = await self.tree.sync()
+                log.info("Synced %d slash commands globally (may take up to 1 hour)", len(synced))
+        except discord.HTTPException as e:
+            log.warning("Could not sync slash commands on startup (HTTP %s): %s", getattr(e, "status", "?"), e)
 
     async def on_ready(self):
         log.info("[OK] Logged in as %s (ID: %s)", self.user, self.user.id)
@@ -141,13 +145,20 @@ class CFBot(commands.Bot):
         error: discord.app_commands.AppCommandError,
     ):
         """Global error handler — catches unhandled slash command errors."""
-        msg = str(error)
-        if isinstance(error, discord.app_commands.CommandOnCooldown):
+        if isinstance(error, discord.app_commands.CommandInvokeError):
+            original = error.original
+            if isinstance(original, discord.HTTPException) and original.status == 429:
+                log.warning("Discord API rate limit (429) encountered in /%s", interaction.command and interaction.command.name)
+                return
+            msg = str(original)
+        elif isinstance(error, discord.app_commands.CommandOnCooldown):
             msg = f"Command on cooldown. Try again in {error.retry_after:.1f}s."
         elif isinstance(error, discord.app_commands.MissingPermissions):
             msg = "You don't have permission to use this command."
         elif isinstance(error, discord.app_commands.BotMissingPermissions):
             msg = f"I'm missing permissions: {', '.join(error.missing_permissions)}"
+        else:
+            msg = str(error)
 
         embed = discord.Embed(title="❌ Error", description=msg, color=config.COLOUR_ERROR)
         try:
