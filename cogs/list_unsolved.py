@@ -14,7 +14,7 @@ import db.queries as q
 from cf_api.client import CFAPIError
 from utils.embed_builder import error_embed
 from utils.paginator import Paginator, build_unsolved_pages
-from cogs.gimme import tag_autocomplete, rating_autocomplete
+from cogs.gimme import tag_autocomplete
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class ListUnsolved(commands.Cog):
         rating="Filter by exact problem rating (optional)",
         tag="Filter by problem tag (optional)",
     )
-    @app_commands.autocomplete(tag=tag_autocomplete, rating=rating_autocomplete)
+    @app_commands.autocomplete(tag=tag_autocomplete)
     async def listunsolved(
         self,
         interaction: discord.Interaction,

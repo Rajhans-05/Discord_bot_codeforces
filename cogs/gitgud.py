@@ -33,8 +33,11 @@ CF_TAGS = [
 ]
 
 async def tag_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    lower = current.lower()
-    return [app_commands.Choice(name=t, value=t) for t in CF_TAGS if lower in t][:25]
+    try:
+        lower = current.lower()
+        return [app_commands.Choice(name=t, value=t) for t in CF_TAGS if lower in t][:25]
+    except Exception:
+        return []
 
 
 class ResultView(discord.ui.View):

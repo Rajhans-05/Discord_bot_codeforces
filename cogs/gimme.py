@@ -40,43 +40,59 @@ RATING_OPTIONS = [
 ]
 
 async def tag_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    # Split on commas to support multi-tag input like "dp, graphs, bitmasks"
-    parts = [p.strip().lower() for p in current.split(",")]
-    # Tags already selected (all parts except the one being typed)
-    already_selected = set(parts[:-1])
-    # The fragment the user is currently typing (after the last comma)
-    fragment = parts[-1] if parts else ""
-    # Build the prefix string from already-selected tags
-    prefix = ", ".join(p for p in parts[:-1] if p) + (", " if already_selected - {""} else "")
+    try:
+        # Split on commas to support multi-tag input like "dp, graphs, bitmasks"
+        parts = [p.strip().lower() for p in current.split(",")]
+        # Tags already selected (all parts except the one being typed)
+        already_selected = set(parts[:-1])
+        # The fragment the user is currently typing (after the last comma)
+        fragment = parts[-1] if parts else ""
+        # Build the prefix string from already-selected tags
+        prefix = ", ".join(p for p in parts[:-1] if p) + (", " if already_selected - {""} else "")
 
-    # Filter: match the fragment, exclude already-selected tags
-    available = [t for t in CF_TAGS if t not in already_selected and fragment in t]
+        # Filter: match the fragment, exclude already-selected tags
+        available = [t for t in CF_TAGS if t not in already_selected and fragment in t]
 
-    choices: list[app_commands.Choice[str]] = []
-    for tag in available[:25]:
-        full_value = f"{prefix}{tag}"
-        # Discord limits Choice name/value to 100 chars
-        if len(full_value) <= 100:
-            choices.append(app_commands.Choice(name=full_value, value=full_value))
+        choices: list[app_commands.Choice[str]] = []
+        for tag in available[:25]:
+            full_value = f"{prefix}{tag}"
+            # Discord limits Choice name/value to 100 chars
+            if len(full_value) <= 100:
+                choices.append(app_commands.Choice(name=full_value, value=full_value))
 
-    return choices
+        return choices
+    except Exception:
+        return []
+
+# Static rating choices — no autocomplete needed, zero API calls per keystroke
+RATING_CHOICES = [
+    app_commands.Choice(name="⭐ Any rating", value="any"),
+    app_commands.Choice(name="🟢 800 – 1000", value="800-1000"),
+    app_commands.Choice(name="🟢 1000 – 1200", value="1000-1200"),
+    app_commands.Choice(name="🟢 1200 – 1400", value="1200-1400"),
+    app_commands.Choice(name="🟡 1400 – 1600", value="1400-1600"),
+    app_commands.Choice(name="🟡 1600 – 1800", value="1600-1800"),
+    app_commands.Choice(name="🟠 1800 – 2000", value="1800-2000"),
+    app_commands.Choice(name="🟠 2000 – 2200", value="2000-2200"),
+    app_commands.Choice(name="🔴 2200 – 2500", value="2200-2500"),
+    app_commands.Choice(name="🔴 2500 – 3500", value="2500-3500"),
+]
 
 async def rating_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    lower = current.strip().lower()
-    choices: list[app_commands.Choice[str]] = []
-
-    # Show preset ranges that match the typed text
-    for display, value in RATING_OPTIONS:
-        if lower in display.lower() or lower in value:
-            choices.append(app_commands.Choice(name=display, value=value))
-
-    # Also show exact ratings that match
-    for r in CF_RATINGS:
-        if str(r).startswith(lower) or not lower:
-            if len(choices) < 25:
-                choices.append(app_commands.Choice(name=f"Exact: {r}", value=str(r)))
-
-    return choices[:25]
+    """Kept for backward compatibility with other cogs that import it."""
+    try:
+        lower = current.strip().lower()
+        choices: list[app_commands.Choice[str]] = []
+        for display, value in RATING_OPTIONS:
+            if lower in display.lower() or lower in value:
+                choices.append(app_commands.Choice(name=display, value=value))
+        for r in CF_RATINGS:
+            if str(r).startswith(lower) or not lower:
+                if len(choices) < 25:
+                    choices.append(app_commands.Choice(name=f"Exact: {r}", value=str(r)))
+        return choices[:25]
+    except Exception:
+        return []
 
 class Gimme(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -88,14 +104,14 @@ class Gimme(commands.Cog):
     )
     @app_commands.describe(
         mode="random: any problem | latest_unsolved: newest unAC'd problem",
-        rating="Rating filter: 'any', a range like '1000-1500', or exact like '1600'",
+        rating="Rating filter (pick a range or type an exact rating like 1600)",
         tags="Comma-separated tags (e.g. dp,graphs)",
     )
     @app_commands.choices(mode=[
         app_commands.Choice(name="🎲 Random unsolved", value="random"),
         app_commands.Choice(name="🕐 Latest unsolved (newest first)", value="latest_unsolved"),
-    ])
-    @app_commands.autocomplete(tags=tag_autocomplete, rating=rating_autocomplete)
+    ], rating=RATING_CHOICES)
+    @app_commands.autocomplete(tags=tag_autocomplete)
     async def gimme(
         self,
         interaction: discord.Interaction,
